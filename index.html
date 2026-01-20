@@ -1,0 +1,752 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gemini AI Widget Generator - Dark Glass Edition</title>
+    
+    <!-- Tailwind CSS (Styling) -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- PDF.js (Untuk membaca PDF Knowledge Base) -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+    <script>
+        pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+    </script>
+
+    <!-- Font & Icons -->
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    
+    <style>
+        body { 
+            font-family: 'Plus Jakarta Sans', sans-serif; 
+            background-color: #0f172a; /* Slate 900 */
+            background-image: 
+                radial-gradient(at 0% 0%, hsla(253,16%,7%,1) 0, transparent 50%), 
+                radial-gradient(at 50% 0%, hsla(225,39%,30%,1) 0, transparent 50%), 
+                radial-gradient(at 100% 0%, hsla(339,49%,30%,1) 0, transparent 50%);
+            color: #e2e8f0; /* Slate 200 */
+        }
+        .scrollbar-hide::-webkit-scrollbar { display: none; }
+        .scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
+        [x-cloak] { display: none !important; }
+        
+        /* Custom Scrollbar for Dark Theme */
+        ::-webkit-scrollbar { width: 8px; }
+        ::-webkit-scrollbar-track { background: #1e293b; }
+        ::-webkit-scrollbar-thumb { background: #475569; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #64748b; }
+
+        /* Glass Utility */
+        .glass-panel {
+            background: rgba(30, 41, 59, 0.7);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+    </style>
+
+    <!-- MAIN LOGIC (Stable) -->
+    <script>
+        function app() {
+            return {
+                config: {
+                    apiKey: '',
+                    model: 'gemini-1.5-flash', 
+                    botName: 'Asisten AI',
+                    greeting: 'Halo! Ada yang bisa saya bantu?',
+                    systemInstruction: '',
+                    primaryColor: '#7c3aed', // Purple-600 (Modern)
+                    secondaryColor: '#f3e8ff', // Purple-100
+                    position: 'bottom-right',
+                    minified: false
+                },
+                availableModels: [], 
+                isLoadingModels: false,
+                isProcessingPdf: false,
+                previewOpen: false,
+                showToast: false,
+
+                // --- API & MODEL HANDLING ---
+                async fetchModels() {
+                    if (!this.config.apiKey) {
+                        alert('Masukkan API Key terlebih dahulu.');
+                        return;
+                    }
+                    
+                    this.isLoadingModels = true;
+                    this.availableModels = [];
+
+                    try {
+                        const cleanKey = this.config.apiKey.trim();
+                        const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${cleanKey}`);
+                        const data = await response.json();
+
+                        if (data.error) throw new Error(data.error.message);
+
+                        if (data.models) {
+                            this.availableModels = data.models
+                                .filter(m => m.supportedGenerationMethods && m.supportedGenerationMethods.includes('generateContent'))
+                                .map(m => ({
+                                    id: m.name.replace('models/', ''), 
+                                    name: m.displayName || m.name 
+                                }));
+                            
+                            this.availableModels.sort((a, b) => {
+                                if (a.id.includes('flash')) return -1;
+                                if (b.id.includes('flash')) return 1;
+                                return 0;
+                            });
+
+                            if (this.availableModels.length > 0) {
+                                this.config.model = this.availableModels[0].id;
+                                alert(`Berhasil! Ditemukan ${this.availableModels.length} model AI.`);
+                            } else {
+                                alert('Koneksi berhasil, tapi tidak ada model chat.');
+                            }
+                        }
+
+                    } catch (error) {
+                        console.error(error);
+                        alert(`Gagal memuat model: ${error.message}.`);
+                        this.availableModels = [
+                            { id: 'gemini-1.5-flash', name: 'Gemini 1.5 Flash (Default)' },
+                            { id: 'gemini-1.5-pro', name: 'Gemini 1.5 Pro' }
+                        ];
+                    } finally {
+                        this.isLoadingModels = false;
+                    }
+                },
+
+                // --- PDF HANDLING ---
+                async handlePdfUpload(event) {
+                    const file = event.target.files[0];
+                    if (!file) return;
+
+                    if (file.type !== 'application/pdf') {
+                        alert('Mohon upload file PDF yang valid.');
+                        return;
+                    }
+
+                    this.isProcessingPdf = true;
+                    try {
+                        const arrayBuffer = await file.arrayBuffer();
+                        const pdf = await pdfjsLib.getDocument(arrayBuffer).promise;
+                        
+                        let fullText = "";
+                        for (let i = 1; i <= pdf.numPages; i++) {
+                            const page = await pdf.getPage(i);
+                            const textContent = await page.getTextContent();
+                            const pageText = textContent.items.map(item => item.str).join(' ');
+                            fullText += `[Halaman ${i}] ${pageText}\n`;
+                        }
+
+                        const prefix = "Gunakan informasi berikut sebagai Knowledge Base utama Anda:\n\n";
+                        this.config.systemInstruction = prefix + fullText;
+                        
+                    } catch (error) {
+                        console.error('Error reading PDF:', error);
+                        alert('Gagal membaca PDF.');
+                    } finally {
+                        this.isProcessingPdf = false;
+                    }
+                },
+
+                // --- CODE GENERATION LOGIC ---
+                generateCode() {
+                    let rawKey = this.config.apiKey;
+                    if (!rawKey) {
+                        alert('Mohon masukkan API Key Gemini terlebih dahulu.');
+                        return;
+                    }
+
+                    const cleanKey = rawKey.trim();
+                    if (!cleanKey.startsWith('AIza')) {
+                        if (!confirm('Peringatan: API Key sepertinya salah format. Lanjut?')) return;
+                    }
+
+                    const { botName, greeting, systemInstruction, primaryColor, secondaryColor, position, model } = this.config;
+                    const apiKey = cleanKey; 
+                    
+                    // INJECT ACTION BUTTONS INSTRUCTION
+                    let finalInstruction = systemInstruction;
+                    finalInstruction += `
+                    
+[SISTEM - INSTRUKSI TOMBOL]:
+Jika user meminta link atau kontak, JANGAN gunakan link markdown biasa. Gunakan format khusus berikut agar muncul tombol interaktif:
+1. WhatsApp: {{WA:NomorHP}} (Contoh: {{WA:62812345678}})
+2. Telegram: {{TG:Username}} (Contoh: {{TG:cs_toko}})
+3. Google Maps: {{MAPS:LinkLengkap}}
+4. Instagram: {{IG:Username}}
+5. TikTok: {{TT:Username}}
+6. Shopee: {{SHOPEE:LinkToko/Produk}}
+7. Tokopedia: {{TOKOPEDIA:LinkToko/Produk}}
+Gunakan format ini hanya jika relevan.`;
+                    
+                    const safeName = botName.replace(/'/g, "\\'");
+                    const safeGreet = greeting.replace(/'/g, "\\'");
+                    const safeSystem = finalInstruction.replace(/`/g, "\\`").replace(/\$/g, "\\$");
+
+                    let code = `
+(function() {
+  const CONFIG = {
+    key: '${apiKey}',
+    model: '${model}',
+    name: '${safeName}',
+    greet: '${safeGreet}',
+    color1: '${primaryColor}',
+    color2: '${secondaryColor}',
+    pos: '${position}',
+    sys: \`${safeSystem}\` 
+  };
+
+  const style = document.createElement('style');
+  style.innerHTML = \`
+    #gemini-widget-container { position: fixed; z-index: 9999; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; bottom: 20px; \${CONFIG.pos === 'bottom-right' ? 'right: 20px' : 'left: 20px'}; display: flex; flex-direction: column; align-items: \${CONFIG.pos === 'bottom-right' ? 'flex-end' : 'flex-start'}; }
+    #gemini-chat-btn { width: 60px; height: 60px; border-radius: 50%; background: \${CONFIG.color1}; color: white; border: none; cursor: pointer; box-shadow: 0 4px 15px rgba(0,0,0,0.2); display: flex; align-items: center; justify-content: center; transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); }
+    #gemini-chat-btn:hover { transform: scale(1.1) rotate(5deg); box-shadow: 0 6px 20px rgba(0,0,0,0.25); }
+    
+    #gemini-chat-window { width: 350px; height: 500px; max-height: 80vh; background: rgba(255, 255, 255, 0.95); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); border-radius: 20px; box-shadow: 0 10px 40px rgba(0,0,0,0.2); display: none; flex-direction: column; overflow: hidden; margin-bottom: 20px; border: 1px solid rgba(255,255,255,0.5); transform-origin: bottom right; animation: geminiFadeIn 0.3s ease; }
+    @keyframes geminiFadeIn { from { opacity: 0; transform: scale(0.9) translateY(20px); } to { opacity: 1; transform: scale(1) translateY(0); } }
+    @keyframes ping { 75%, 100% { transform: scale(2); opacity: 0; } }
+    
+    #gemini-header { padding: 18px; background: \${CONFIG.color1}; color: white; display: flex; align-items: center; justify-content: space-between; font-weight: 600; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+    #gemini-messages { flex: 1; padding: 20px; overflow-y: auto; background: rgba(0,0,0,0.02); display: flex; flex-direction: column; gap: 14px; scroll-behavior: smooth; }
+    
+    #gemini-input-area { padding: 12px 14px 6px 14px; border-top: 1px solid rgba(0,0,0,0.05); display: flex; gap: 8px; background: rgba(255,255,255,0.8); align-items: flex-end; }
+    #gemini-input { flex: 1; padding: 10px 14px; border: 1px solid #e2e8f0; border-radius: 12px; outline: none; font-size: 14px; resize: none; max-height: 100px; font-family: inherit; transition: border 0.2s; background: white; }
+    #gemini-input:focus { border-color: \${CONFIG.color1}; box-shadow: 0 0 0 2px rgba(124, 58, 237, 0.1); }
+    #gemini-send, #gemini-attach { background: none; border: none; cursor: pointer; color: \${CONFIG.color1}; padding: 8px; border-radius: 8px; transition: background 0.2s; }
+    #gemini-send:hover, #gemini-attach:hover { background: rgba(0,0,0,0.05); }
+    
+    .g-msg { max-width: 85%; padding: 12px 16px; border-radius: 16px; font-size: 14px; line-height: 1.6; word-wrap: break-word; box-shadow: 0 1px 2px rgba(0,0,0,0.05); }
+    .g-msg.bot { align-self: flex-start; background: white; border-bottom-left-radius: 4px; border: 1px solid #f1f5f9; }
+    .g-msg.user { align-self: flex-end; background: \${CONFIG.color2}; color: #1e293b; border-bottom-right-radius: 4px; }
+    
+    /* MULTI-BUTTON STYLES */
+    .g-btn { display: inline-flex; align-items: center; gap: 6px; padding: 8px 12px; border-radius: 10px; text-decoration: none; font-weight: 600; font-size: 12px; margin-top: 6px; transition: transform 0.2s; color: white !important; width: fit-content; box-shadow: 0 2px 5px rgba(0,0,0,0.1); margin-right: 4px; margin-bottom: 4px; }
+    .g-btn:hover { transform: translateY(-2px); filter: brightness(110%); }
+    .g-btn svg { width: 16px; height: 16px; flex-shrink: 0; }
+    
+    .g-btn-wa { background: #25D366; }
+    .g-btn-tg { background: #0088cc; }
+    .g-btn-maps { background: #EA4335; }
+    .g-btn-ig { background: radial-gradient(circle at 30% 107%, #fdf497 0%, #fdf497 5%, #fd5949 45%,#d6249f 60%,#285AEB 90%); }
+    .g-btn-tt { background: #000000; }
+    .g-btn-shp { background: #EE4D2D; }
+    .g-btn-tok { background: #42B549; }
+
+    .g-typing { font-size: 12px; color: #94a3b8; margin-left: 14px; margin-bottom: 8px; display: none; font-style: italic; }
+    .g-img-preview { max-width: 80px; max-height: 80px; border-radius: 10px; border: 1px solid #cbd5e1; display: none; margin-bottom: 8px; object-fit: cover; }
+    .g-disclaimer { font-size: 10px; color: #cbd5e1; text-align: center; margin-top: 4px; margin-bottom: 8px; }
+    
+    .g-msg p { margin: 0 0 8px 0; } .g-msg p:last-child { margin: 0; }
+    .g-msg strong { font-weight: 600; color: #0f172a; } 
+    .g-msg ul, .g-msg ol { padding-left: 20px; margin: 4px 0; }
+    .g-msg li { margin-bottom: 4px; }
+    .g-msg code { background: #f1f5f9; padding: 2px 5px; border-radius: 4px; font-family: monospace; font-size: 12px; color: #ef4444; }
+  \`;
+  document.head.appendChild(style);
+
+  const container = document.createElement('div');
+  container.id = 'gemini-widget-container';
+  container.innerHTML = \`
+    <div id="gemini-chat-window">
+      <div id="gemini-header">
+        <div style="display:flex;align-items:center;gap:12px">
+          <div style="width:36px;height:36px;background:rgba(255,255,255,0.2);border-radius:50%;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(4px);">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a10 10 0 0 1 10 10c0 5.52-4.48 10-10 10S2 17.52 2 12 6.48 2 12 2z"></path><path d="M8 14s1.5 2 4 2 4-2 4-2"></path><line x1="9" y1="9" x2="9.01" y2="9"></line><line x1="15" y1="9" x2="15.01" y2="9"></line></svg>
+          </div>
+          <div style="display:flex; flex-direction:column;">
+            <span style="font-weight:600; font-size:14px; letter-spacing:0.5px;">\${CONFIG.name}</span>
+            <div style="display:flex; align-items:center; gap:6px; opacity:0.9; font-size:11px;">
+                <span style="position:relative; display:flex; height:8px; width:8px;">
+                  <span style="position:absolute; display:inline-flex; height:100%; width:100%; border-radius:50%; background:white; opacity:0.75; animation: ping 1s cubic-bezier(0, 0, 0.2, 1) infinite;"></span>
+                  <span style="position:relative; display:inline-flex; border-radius:50%; height:8px; width:8px; background:#4ade80;"></span>
+                </span>
+                <span>Online</span>
+            </div>
+          </div>
+        </div>
+        <button id="gemini-close" style="background:none;border:none;color:white;cursor:pointer;opacity:0.8;transition:opacity 0.2s;">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"></path></svg>
+        </button>
+      </div>
+      <div id="gemini-messages">
+        <div class="g-msg bot">\${CONFIG.greet}</div>
+      </div>
+      <div class="g-typing">Sedang mengetik...</div>
+      <div id="gemini-input-area">
+        <input type="file" id="gemini-file-input" accept="image/png, image/jpeg" style="display:none">
+        <button id="gemini-attach" title="Kirim Gambar">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"></path></svg>
+        </button>
+        <div style="flex:1; display:flex; flex-direction:column;">
+          <img id="gemini-preview-img" class="g-img-preview">
+          <textarea id="gemini-input" placeholder="Ketik pesan..."></textarea>
+        </div>
+        <button id="gemini-send">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg>
+        </button>
+      </div>
+      <div class="g-disclaimer">OMGER Ai-Labs | Powered by Gemini AI</div>
+    </div>
+    <button id="gemini-chat-btn">
+      <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
+    </button>
+  \`;
+  document.body.appendChild(container);
+
+  const btn = document.getElementById('gemini-chat-btn');
+  const windowEl = document.getElementById('gemini-chat-window');
+  const input = document.getElementById('gemini-input');
+  const sendBtn = document.getElementById('gemini-send');
+  const messages = document.getElementById('gemini-messages');
+  const closeBtn = document.getElementById('gemini-close');
+  const fileInput = document.getElementById('gemini-file-input');
+  const attachBtn = document.getElementById('gemini-attach');
+  const previewImg = document.getElementById('gemini-preview-img');
+  const typing = document.querySelector('.g-typing');
+  
+  let isOpen = false;
+  let chatHistory = [];
+  let currentImage = null;
+
+  const toggle = () => {
+    isOpen = !isOpen;
+    windowEl.style.display = isOpen ? 'flex' : 'none';
+    btn.innerHTML = isOpen ? '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 18L18 6M6 6l12 12"></path></svg>' : '<svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>';
+    if(isOpen) {
+      input.focus(); 
+      loadMarked();
+    }
+  };
+  btn.onclick = toggle;
+  closeBtn.onclick = toggle;
+
+  function loadMarked() {
+    if(window.marked) return;
+    const script = document.createElement('script');
+    script.src = 'https://cdn.jsdelivr.net/npm/marked/marked.min.js';
+    document.head.appendChild(script);
+  }
+
+  attachBtn.onclick = () => fileInput.click();
+  fileInput.onchange = (e) => {
+    const file = e.target.files[0];
+    if(file) {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        currentImage = e.target.result.split(',')[1];
+        previewImg.src = e.target.result;
+        previewImg.style.display = 'block';
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  function addMsg(text, type) {
+    const div = document.createElement('div');
+    div.className = 'g-msg ' + type;
+    
+    let processedText = text;
+    if (type === 'bot' && window.marked) {
+        processedText = window.marked.parse(text);
+    } else if (type === 'bot' && !window.marked) {
+        processedText = text;
+    }
+
+    if (type === 'bot') {
+        // WhatsApp
+        processedText = processedText.replace(/{{WA:(\\d+)}}/g, (m, n) => {
+            return \`<a href="https://wa.me/\${n}" target="_blank" class="g-btn g-btn-wa"><svg viewBox="0 0 16 16" fill="currentColor"><path d="M13.6 2.3A7.9 7.9 0 007.99 0C3.6 0 .07 3.56.06 7.93c0 1.4.37 2.76 1.06 3.96L0 16l4.2-1.1c1.2.66 2.5 1 3.8 1h.01c4.36 0 7.92-3.56 7.93-7.93 0-2.1-.82-4.1-2.33-5.63z"/></svg>WhatsApp</a>\`;
+        });
+        // Telegram
+        processedText = processedText.replace(/{{TG:(\\w+)}}/g, (m, u) => {
+            return \`<a href="https://t.me/\${u}" target="_blank" class="g-btn g-btn-tg"><svg viewBox="0 0 16 16" fill="currentColor"><path d="M16 8A8 8 0 1 1 0 8a8 8 0 0 1 16 0zM8.287 5.906c-.778.324-2.334.994-4.666 2.01-.378.15-.53.298-.534.472-.005.18.254.25.643.37.195.06.453.136.634.195.45.143.953.386 1.15.422.18.032.396-.06.561-.26 1.148-1.373 1.91-2.26 2.29-2.66.085-.09.167-.145.035-.022-.2.186-1.077 1.03-1.293 1.24-.306.297-.61.643.076 1.097.67.443 1.205.81 1.57 1.05.416.273.747.42.998.257.222-.143.682-1.27.846-1.926.07-.282.023-.46-.113-.565-.136-.105-.487-.197-1.576-.64-2.18-.89-3.23-1.096-3.374-1.06z"/></svg>Telegram</a>\`;
+        });
+        // Google Maps
+        processedText = processedText.replace(/{{MAPS:(.*?)}}/g, (m, l) => {
+            return \`<a href="\${l}" target="_blank" class="g-btn g-btn-maps"><svg viewBox="0 0 16 16" fill="currentColor"><path d="M8 16s6-5.686 6-10A6 6 0 0 0 2 6c0 4.314 6 10 6 10zm0-7a3 3 0 1 1 0-6 3 3 0 0 1 0 6z"/></svg>Buka Maps</a>\`;
+        });
+        // Instagram
+        processedText = processedText.replace(/{{IG:(\\w+)}}/g, (m, u) => {
+            return \`<a href="https://instagram.com/\${u}" target="_blank" class="g-btn g-btn-ig"><svg viewBox="0 0 16 16" fill="currentColor"><path d="M8 0C5.829 0 5.556.01 4.703.048 3.85.088 3.269.222 2.76.42a3.917 3.917 0 0 0-1.417.923A3.927 3.927 0 0 0 .42 2.76C.222 3.268.087 3.85.048 4.7.01 5.555 0 5.827 0 8.001c0 2.172.01 2.444.048 3.297.04.852.174 1.433.372 1.942.205.526.478.972.923 1.417.444.445.89.719 1.416.923.51.198 1.09.333 1.942.372C5.555 15.99 5.827 16 8 16s2.444-.01 3.298-.048c.851-.04 1.434-.174 1.943-.372a3.916 3.916 0 0 0 1.416-.923c.445-.445.718-.891.923-1.417.197-.509.332-1.09.372-1.942C15.99 10.445 16 10.173 16 8s-.01-2.445-.048-3.299c-.04-.851-.175-1.433-.372-1.941a3.926 3.926 0 0 0-.923-1.417A3.911 3.911 0 0 0 13.24.42c-.51-.198-1.092-.333-1.943-.372C10.443.01 10.172 0 7.998 0h.003zm-.717 1.442h.718c2.136 0 2.389.007 3.232.046.78.035 1.204.166 1.486.275.373.145.64.319.92.599.28.28.453.546.598.92.11.281.24.705.275 1.485.039.843.047 1.096.047 3.231s-.008 2.389-.047 3.232c-.035.78-.166 1.203-.275 1.485a2.47 2.47 0 0 1-.599.919c-.28.28-.546.453-.92.598-.28.11-.704.24-1.485.276-.843.038-1.096.047-3.232.047s-2.39-.009-3.233-.047c-.78-.036-1.203-.166-1.485-.276a2.478 2.478 0 0 1-.92-.598 2.48 2.48 0 0 1-.6-.92c-.109-.281-.24-.705-.275-1.485-.038-.843-.046-1.096-.046-3.233 0-2.136.008-2.388.046-3.231.036-.78.166-1.204.276-1.486.145-.373.319-.64.599-.92.28-.28.546-.453.92-.598.282-.11.705-.24 1.485-.276.738-.034 1.024-.044 2.515-.045v.002zm4.988 1.328a.96.96 0 1 0 0 1.92.96.96 0 0 0 0-1.92zm-4.27 1.122a4.109 4.109 0 1 0 0 8.217 4.109 4.109 0 0 0 0-8.217zm0 1.441a2.667 2.667 0 1 1 0 5.334 2.667 2.667 0 0 1 0-5.334z"/></svg>Instagram</a>\`;
+        });
+        // TikTok
+        processedText = processedText.replace(/{{TT:(\\w+)}}/g, (m, u) => {
+            return \`<a href="https://tiktok.com/@\${u}" target="_blank" class="g-btn g-btn-tt"><svg viewBox="0 0 16 16" fill="currentColor"><path d="M9 0h1.98c.144.715.54 1.617 1.235 2.512C12.895 3.389 13.797 4 15 4v2c-1.753 0-3.07-.814-4-1.829V11a5 5 0 1 1-5-5v2a3 3 0 1 0 3 3V0z"/></svg>TikTok</a>\`;
+        });
+        // Shopee
+        processedText = processedText.replace(/{{SHOPEE:(.*?)}}/g, (m, l) => {
+            return \`<a href="\${l}" target="_blank" class="g-btn g-btn-shp"><svg viewBox="0 0 16 16" fill="currentColor"><path d="M8.5 2c-3.5 0-6 2-6 5 0 2 2 3.5 3.5 4L5 14l3-2c3.5 0 6-2 6-5s-2.5-5-5.5-5z"/></svg>Shopee</a>\`;
+        });
+        // Tokopedia
+        processedText = processedText.replace(/{{TOKOPEDIA:(.*?)}}/g, (m, l) => {
+            return \`<a href="\${l}" target="_blank" class="g-btn g-btn-tok"><svg viewBox="0 0 16 16" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8s3.58 8 8 8 8-3.58 8-8-3.58-8-8-8zm0 14c-3.31 0-6-2.69-6-6s2.69-6 6-6 6 2.69 6 6-2.69 6-6 6z"/></svg>Tokopedia</a>\`;
+        });
+    }
+
+    div.innerHTML = processedText;
+    messages.appendChild(div);
+    messages.scrollTop = messages.scrollHeight;
+  }
+
+  async function send() {
+    const text = input.value.trim();
+    if(!text && !currentImage) return;
+
+    input.value = '';
+    previewImg.style.display = 'none';
+    previewImg.src = '';
+
+    addMsg(text || (currentImage ? '[Gambar dikirim]' : ''), 'user');
+    
+    const parts = [{ text: text }];
+    if (currentImage) {
+      parts.push({ inline_data: { mime_type: "image/jpeg", data: currentImage } });
+      currentImage = null;
+    }
+
+    const requestBody = {
+      contents: [
+        ...chatHistory,
+        { role: "user", parts: parts }
+      ],
+      system_instruction: {
+        parts: [{ text: CONFIG.sys }]
+      }
+    };
+
+    typing.style.display = 'block';
+
+    try {
+      const response = await fetch(\`https://generativelanguage.googleapis.com/v1beta/models/\${CONFIG.model}:generateContent?key=\${CONFIG.key}\`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(requestBody)
+      });
+      
+      const data = await response.json();
+      typing.style.display = 'none';
+
+      if(data.error) {
+         let msg = data.error.message;
+         if(msg.includes('API key not valid')) msg += ' (Periksa API Key)';
+         if(msg.includes('not found') || msg.includes('not supported')) msg += ' (Ganti Model AI)';
+         throw new Error(msg);
+      }
+
+      const botText = data.candidates[0].content.parts[0].text;
+      addMsg(botText, 'bot');
+      
+      chatHistory.push({ role: "user", parts: [{text: text}] });
+      chatHistory.push({ role: "model", parts: [{text: botText}] });
+
+    } catch (err) {
+      typing.style.display = 'none';
+      addMsg('Error: ' + err.message, 'bot');
+    }
+  }
+
+  sendBtn.onclick = send;
+  input.onkeypress = (e) => { if(e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); } };
+
+})();
+`;
+
+                    if (this.config.minified) {
+                        code = code.replace(/\/\/.*$/gm, '').replace(/\s*([{};,:=])\s*/g, '$1').replace(/\s+/g, ' ');
+                    }
+
+                    const finalOutput = `<script>${code}<\/script>`;
+                    const textArea = document.createElement("textarea");
+                    textArea.value = finalOutput;
+                    textArea.style.position = "fixed";
+                    textArea.style.opacity = "0";
+                    document.body.appendChild(textArea);
+                    textArea.focus();
+                    textArea.select();
+                    try {
+                        document.execCommand('copy');
+                        this.showToast = true;
+                        setTimeout(() => this.showToast = false, 3000);
+                    } catch (err) {
+                        alert('Gagal menyalin. Silakan copy manual.');
+                    }
+                    document.body.removeChild(textArea);
+                }
+            }
+        }
+    </script>
+    <script src="https://cdn.jsdelivr.net/npm/alpinejs@3.13.3/dist/cdn.min.js"></script>
+</head>
+<body class="h-screen overflow-hidden text-sm" x-data="app()">
+
+    <!-- Header Glass -->
+    <header class="h-16 glass-panel border-b-0 flex items-center px-6 justify-between z-20 relative shadow-lg">
+        <div class="flex items-center gap-3">
+            <div class="w-9 h-9 bg-gradient-to-br from-violet-600 to-fuchsia-600 rounded-xl flex items-center justify-center text-white font-bold shadow-lg shadow-purple-500/20">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a10 10 0 0 1 10 10c0 5.52-4.48 10-10 10S2 17.52 2 12 6.48 2 12 2z"></path><path d="M8 14s1.5 2 4 2 4-2 4-2"></path><line x1="9" y1="9" x2="9.01" y2="9"></line><line x1="15" y1="9" x2="15.01" y2="9"></line></svg>
+            </div>
+            <div>
+                <h1 class="text-lg font-bold bg-clip-text text-transparent bg-gradient-to-r from-violet-400 to-fuchsia-400 tracking-tight">
+                    Gemini Widget
+                </h1>
+                <p class="text-[10px] text-slate-400 font-medium tracking-wide opacity-80">GENERATOR AI • DARK EDITION</p>
+            </div>
+        </div>
+        <div class="flex items-center gap-2">
+            <span class="px-3 py-1 rounded-full bg-white/5 border border-white/10 text-xs text-slate-300">v1.4 Stable</span>
+        </div>
+    </header>
+
+    <main class="flex h-[calc(100vh-64px)]">
+        
+        <!-- LEFT PANEL: Configuration -->
+        <aside class="w-[400px] glass-panel border-r-0 border-t border-white/5 overflow-y-auto p-6 z-10 flex flex-col gap-6 scrollbar-hide">
+            
+            <div class="space-y-5">
+                <div class="flex items-center gap-2 text-violet-400 font-semibold text-xs uppercase tracking-wider mb-2">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
+                    Koneksi & Model
+                </div>
+
+                <div class="group">
+                    <label class="block text-xs font-medium text-slate-400 mb-1.5 ml-1">Gemini API Key</label>
+                    <div class="flex gap-2">
+                        <input type="password" x-model="config.apiKey" placeholder="AIza..." 
+                            class="flex-1 px-4 py-2.5 bg-slate-800/50 border border-slate-700 rounded-xl focus:ring-2 focus:ring-violet-500 focus:border-transparent outline-none text-slate-200 placeholder-slate-600 transition-all hover:bg-slate-800">
+                        <button @click="fetchModels" :disabled="isLoadingModels" 
+                            class="bg-violet-600 hover:bg-violet-500 text-white px-4 py-2 rounded-xl text-xs font-semibold transition-all shadow-lg shadow-violet-500/20 disabled:opacity-50 disabled:cursor-not-allowed">
+                            <span x-show="!isLoadingModels">Cek</span>
+                            <span x-show="isLoadingModels" class="animate-pulse">...</span>
+                        </button>
+                    </div>
+                </div>
+                
+                <div class="group">
+                    <label class="block text-xs font-medium text-slate-400 mb-1.5 ml-1">Model AI</label>
+                    <div class="relative">
+                        <select x-model="config.model" class="w-full appearance-none px-4 py-2.5 bg-slate-800/50 border border-slate-700 rounded-xl outline-none focus:ring-2 focus:ring-violet-500 text-slate-200 transition-all cursor-pointer hover:bg-slate-800">
+                            <template x-for="m in availableModels" :key="m.id">
+                                <option :value="m.id" x-text="m.name"></option>
+                            </template>
+                            <option x-show="availableModels.length === 0" value="gemini-1.5-flash">Default: Gemini 1.5 Flash</option>
+                        </select>
+                        <div class="absolute right-3 top-3 pointer-events-none text-slate-500">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="h-px bg-white/5 my-2"></div>
+
+            <div class="space-y-5">
+                <div class="flex items-center gap-2 text-fuchsia-400 font-semibold text-xs uppercase tracking-wider mb-2">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zm0 0h12a2 2 0 002-2v-4a2 2 0 00-2-2h-2.343M11 7.343l1.657-1.657a2 2 0 012.828 0l2.829 2.829a2 2 0 010 2.828l-8.486 8.485M7 17h.01"></path></svg>
+                    Personalisasi
+                </div>
+
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-xs font-medium text-slate-400 mb-1.5 ml-1">Nama Bot</label>
+                        <input type="text" x-model="config.botName" class="w-full px-4 py-2.5 bg-slate-800/50 border border-slate-700 rounded-xl focus:ring-2 focus:ring-fuchsia-500 outline-none text-slate-200">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-medium text-slate-400 mb-1.5 ml-1">Posisi</label>
+                        <select x-model="config.position" class="w-full px-4 py-2.5 bg-slate-800/50 border border-slate-700 rounded-xl outline-none text-slate-200">
+                            <option value="bottom-right">Kanan</option>
+                            <option value="bottom-left">Kiri</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div>
+                    <label class="block text-xs font-medium text-slate-400 mb-1.5 ml-1">Pesan Pembuka</label>
+                    <input type="text" x-model="config.greeting" class="w-full px-4 py-2.5 bg-slate-800/50 border border-slate-700 rounded-xl focus:ring-2 focus:ring-fuchsia-500 outline-none text-slate-200">
+                </div>
+
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-xs font-medium text-slate-400 mb-1.5 ml-1">Warna Utama</label>
+                        <div class="flex items-center gap-3 bg-slate-800/50 p-2 rounded-xl border border-slate-700">
+                            <input type="color" x-model="config.primaryColor" class="h-8 w-8 rounded-lg cursor-pointer border-0 bg-transparent p-0">
+                            <span class="text-xs font-mono text-slate-400" x-text="config.primaryColor"></span>
+                        </div>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-medium text-slate-400 mb-1.5 ml-1">Bubble User</label>
+                        <div class="flex items-center gap-3 bg-slate-800/50 p-2 rounded-xl border border-slate-700">
+                            <input type="color" x-model="config.secondaryColor" class="h-8 w-8 rounded-lg cursor-pointer border-0 bg-transparent p-0">
+                            <span class="text-xs font-mono text-slate-400" x-text="config.secondaryColor"></span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="h-px bg-white/5 my-2"></div>
+
+            <div class="space-y-4 flex-1">
+                <div class="flex items-center justify-between">
+                    <div class="flex items-center gap-2 text-blue-400 font-semibold text-xs uppercase tracking-wider">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"></path></svg>
+                        Knowledge Base (PDF)
+                    </div>
+                </div>
+                
+                <div class="relative group cursor-pointer">
+                    <div class="border-2 border-dashed border-slate-700 rounded-xl p-6 text-center transition-all group-hover:border-violet-500/50 group-hover:bg-violet-500/5">
+                        <input type="file" accept="application/pdf" @change="handlePdfUpload" class="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10">
+                        <div x-show="!isProcessingPdf" class="space-y-2">
+                            <div class="w-10 h-10 bg-slate-800 rounded-full flex items-center justify-center mx-auto text-slate-400 group-hover:text-violet-400 transition-colors">
+                                <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"></path></svg>
+                            </div>
+                            <p class="text-xs text-slate-400 font-medium">Klik untuk upload PDF</p>
+                        </div>
+                        <div x-show="isProcessingPdf" class="flex flex-col items-center justify-center">
+                            <svg class="animate-spin h-6 w-6 text-violet-500 mb-2" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+                            <span class="text-xs text-violet-400">Extracting...</span>
+                        </div>
+                    </div>
+                </div>
+
+                <textarea x-model="config.systemInstruction" rows="4" class="w-full px-4 py-3 bg-slate-800/50 border border-slate-700 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-xs font-mono text-slate-300 resize-none placeholder-slate-600" placeholder="System Prompt akan muncul di sini..."></textarea>
+            </div>
+
+            <div class="sticky bottom-0 pt-4 mt-2">
+                <button @click="generateCode" class="w-full relative group overflow-hidden bg-white text-black py-3.5 rounded-xl font-bold transition-all hover:scale-[1.02] shadow-[0_0_20px_rgba(255,255,255,0.3)]">
+                    <div class="absolute inset-0 bg-gradient-to-r from-violet-200 via-fuchsia-200 to-white opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
+                    <span class="relative flex items-center justify-center gap-2">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4"></path></svg>
+                        GENERATE SCRIPT
+                    </span>
+                </button>
+                
+                <div x-show="showToast" x-transition class="absolute bottom-16 left-0 right-0 text-center" x-cloak>
+                    <span class="bg-emerald-500/90 backdrop-blur text-white px-4 py-2 rounded-full text-xs font-bold shadow-lg border border-emerald-400/50">
+                        ✨ Kode berhasil disalin!
+                    </span>
+                </div>
+            </div>
+
+        </aside>
+
+        <!-- RIGHT PANEL: Live Preview -->
+        <section class="flex-1 relative flex flex-col bg-[#020617]">
+            
+            <!-- Abstract Background for Preview -->
+            <div class="absolute inset-0 z-0 opacity-40">
+                <div class="absolute top-0 left-0 w-full h-full bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-20"></div>
+                <div class="absolute top-1/4 left-1/4 w-96 h-96 bg-violet-600/30 rounded-full blur-[100px]"></div>
+                <div class="absolute bottom-1/4 right-1/4 w-96 h-96 bg-fuchsia-600/30 rounded-full blur-[100px]"></div>
+            </div>
+
+            <!-- Mock Browser Bar -->
+            <div class="h-12 glass-panel border-t-0 border-l border-white/5 flex items-center px-6 gap-3 z-10">
+                <div class="flex gap-2">
+                    <div class="w-3 h-3 rounded-full bg-rose-500/80"></div>
+                    <div class="w-3 h-3 rounded-full bg-amber-500/80"></div>
+                    <div class="w-3 h-3 rounded-full bg-emerald-500/80"></div>
+                </div>
+                <div class="flex-1 bg-slate-800/50 h-7 rounded-lg px-4 text-[10px] flex items-center text-slate-500 font-mono ml-4 border border-white/5">
+                    https://your-awesome-website.com
+                </div>
+            </div>
+
+            <!-- Mock Content -->
+            <div class="flex-1 p-12 overflow-y-auto relative z-0">
+                <div class="max-w-4xl mx-auto space-y-12 opacity-30 select-none pointer-events-none grayscale">
+                    <div class="h-20 w-3/4 bg-slate-700 rounded-2xl"></div>
+                    <div class="grid grid-cols-3 gap-8">
+                        <div class="aspect-video bg-slate-800 rounded-2xl"></div>
+                        <div class="aspect-video bg-slate-800 rounded-2xl"></div>
+                        <div class="aspect-video bg-slate-800 rounded-2xl"></div>
+                    </div>
+                    <div class="space-y-6">
+                        <div class="h-4 w-full bg-slate-800 rounded-full"></div>
+                        <div class="h-4 w-5/6 bg-slate-800 rounded-full"></div>
+                        <div class="h-4 w-4/6 bg-slate-800 rounded-full"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- PREVIEW WIDGET -->
+            <!-- Chat Window -->
+            <div x-show="previewOpen" 
+                 x-transition:enter="transition ease-out duration-300"
+                 x-transition:enter-start="opacity-0 translate-y-4 scale-95"
+                 x-transition:enter-end="opacity-100 translate-y-0 scale-100"
+                 x-transition:leave="transition ease-in duration-200"
+                 x-transition:leave-start="opacity-100 translate-y-0 scale-100"
+                 x-transition:leave-end="opacity-0 translate-y-4 scale-95"
+                 class="absolute m-6 w-[360px] h-[550px] max-h-[80vh] bg-white/90 backdrop-blur-xl rounded-[24px] shadow-2xl flex flex-col overflow-hidden border border-white/50 z-50"
+                 :class="{'right-0 bottom-20': config.position === 'bottom-right', 'left-0 bottom-20': config.position === 'bottom-left'}"
+                 x-cloak>
+                
+                <div class="p-5 text-white flex items-center justify-between shadow-sm" :style="`background-color: ${config.primaryColor}`">
+                    <div class="flex items-center gap-3">
+                        <div class="w-9 h-9 rounded-full bg-white/20 flex items-center justify-center backdrop-blur-md">
+                            <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 2a10 10 0 0 1 10 10c0 5.52-4.48 10-10 10S2 17.52 2 12 6.48 2 12 2z"></path><path d="M8 14s1.5 2 4 2 4-2 4-2"></path><line x1="9" y1="9" x2="9.01" y2="9"></line><line x1="15" y1="9" x2="15.01" y2="9"></line></svg>
+                        </div>
+                        <div>
+                            <div class="font-bold text-sm" x-text="config.botName"></div>
+                            <div class="text-[10px] opacity-90 flex items-center gap-1.5">
+                                <span class="relative flex h-2 w-2">
+                                  <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-white opacity-75"></span>
+                                  <span class="relative inline-flex rounded-full h-2 w-2 bg-emerald-400"></span>
+                                </span>
+                                Online
+                            </div>
+                        </div>
+                    </div>
+                    <button @click="previewOpen = false" class="text-white/70 hover:text-white transition">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                    </button>
+                </div>
+
+                <div class="flex-1 overflow-y-auto p-5 space-y-4 bg-slate-50/50">
+                    <div class="flex gap-3 max-w-[85%]">
+                        <div class="w-8 h-8 rounded-full flex-shrink-0 flex items-center justify-center text-white text-[10px] font-bold shadow-sm" :style="`background-color: ${config.primaryColor}`">AI</div>
+                        <div class="bg-white p-3.5 rounded-2xl rounded-tl-none shadow-sm border border-slate-100 text-sm text-slate-700 leading-relaxed">
+                            <p x-text="config.greeting"></p>
+                        </div>
+                    </div>
+
+                    <div class="flex gap-3 max-w-[85%] ml-auto flex-row-reverse">
+                        <div class="p-3.5 rounded-2xl rounded-tr-none shadow-sm text-sm text-slate-800 leading-relaxed" :style="`background-color: ${config.secondaryColor}`">
+                            <p>Tampilan barunya keren!</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- PREVIEW FOOTER MATCHING GENERATED OUTPUT -->
+                <div class="p-3 bg-white/80 border-t border-slate-100" style="padding-bottom: 2px;">
+                    <div class="flex items-end gap-2 bg-white rounded-2xl p-2 border border-slate-200 focus-within:border-violet-400 focus-within:ring-2 focus-within:ring-violet-100 transition shadow-sm">
+                        <button class="p-2 text-slate-400 hover:text-violet-500 rounded-xl hover:bg-slate-50 transition">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
+                        </button>
+                        <textarea rows="1" placeholder="Tulis pesan..." class="flex-1 bg-transparent border-none outline-none text-sm resize-none py-2.5 max-h-24"></textarea>
+                        <button class="p-2 rounded-xl text-white transition hover:scale-105 active:scale-95 shadow-md" :style="`background-color: ${config.primaryColor}`">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg>
+                        </button>
+                    </div>
+                    <div class="text-center mt-1 mb-2">
+                        <p class="text-[10px] text-slate-400 font-medium">OMGER Ai-Labs | Powered by Gemini AI</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Launcher Button -->
+            <button @click="previewOpen = !previewOpen" 
+                    class="absolute m-6 w-16 h-16 shadow-xl shadow-violet-900/20 flex items-center justify-center text-white transition-all duration-300 transform hover:scale-105 hover:rotate-3 z-40 border border-white/20"
+                    :class="{'rotate-90 rounded-full': previewOpen, 'rounded-full': !previewOpen, 'right-0 bottom-0': config.position === 'bottom-right', 'left-0 bottom-0': config.position === 'bottom-left'}"
+                    :style="`background-color: ${config.primaryColor}`">
+                <svg x-show="!previewOpen" class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z"></path></svg>
+                <svg x-show="previewOpen" class="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+            </button>
+        </section>
+    </main>
+</body>
+</html>
