@@ -617,10 +617,10 @@ Gunakan format ini hanya jika relevan.`;
         </div>
     </header>
 
-    <main x-show="isLoggedIn" x-transition.opacity class="flex flex-col md:flex-row md:h-[calc(100vh-64px)] md:overflow-hidden">
+    <main x-show="isLoggedIn" x-transition.opacity class="flex flex-col md:flex-row md:h-[calc(100vh-64px)] overflow-y-auto md:overflow-hidden">
         
         <!-- LEFT PANEL: Configuration -->
-        <aside class="w-full md:w-[400px] glass-panel border-r-0 border-t md:border-t-0 md:border-r border-white/5 p-6 z-10 flex flex-col gap-6 shrink-0 md:overflow-y-auto md:h-full relative">
+        <aside class="w-full md:w-[400px] glass-panel border-r-0 border-t md:border-t-0 md:border-r border-white/5 p-6 z-10 flex flex-col gap-6 shrink-0 md:overflow-y-auto md:h-full relative min-h-0">
             
             <div class="space-y-5">
                 <div class="flex items-center gap-2 text-violet-400 font-semibold text-xs uppercase tracking-wider mb-2">
@@ -730,8 +730,8 @@ Gunakan format ini hanya jika relevan.`;
 
                 <textarea x-model="config.systemInstruction" rows="4" class="w-full px-4 py-3 bg-slate-800/50 border border-slate-700 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-xs font-mono text-slate-300 resize-none placeholder-slate-600" placeholder="System Prompt akan muncul di sini..."></textarea>
             </div>
-
-            <div class="pt-6 mt-2 pb-6">
+            
+            <div class="pt-6 mt-2 pb-10">
                 <button @click="generateCode" class="w-full relative group overflow-hidden bg-white text-black py-3.5 rounded-xl font-bold transition-all hover:scale-[1.02] shadow-[0_0_20px_rgba(255,255,255,0.3)]">
                     <div class="absolute inset-0 bg-gradient-to-r from-violet-200 via-fuchsia-200 to-white opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
                     <span class="relative flex items-center justify-center gap-2">
@@ -740,7 +740,7 @@ Gunakan format ini hanya jika relevan.`;
                     </span>
                 </button>
                 
-                <div x-show="showToast" x-transition class="absolute bottom-20 md:bottom-16 left-0 right-0 text-center" x-cloak>
+                <div x-show="showToast" x-transition class="mt-4 text-center" x-cloak>
                     <span class="bg-emerald-500/90 backdrop-blur text-white px-4 py-2 rounded-full text-xs font-bold shadow-lg border border-emerald-400/50">
                         ✨ Kode berhasil disalin!
                     </span>
@@ -750,7 +750,7 @@ Gunakan format ini hanya jika relevan.`;
         </aside>
 
         <!-- RIGHT PANEL: Live Preview -->
-        <section class="w-full md:flex-1 h-[500px] md:h-full relative flex flex-col bg-[#020617] md:min-h-0">
+        <section class="w-full md:flex-1 h-[600px] md:h-full relative flex flex-col bg-[#020617] md:min-h-0">
             
             <!-- Abstract Background for Preview -->
             <div class="absolute inset-0 z-0 opacity-40">
