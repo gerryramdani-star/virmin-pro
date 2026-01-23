@@ -537,11 +537,9 @@ Gunakan format ini hanya jika relevan.`;
 
         <div class="glass-panel w-full max-w-sm p-8 rounded-2xl shadow-2xl relative border border-white/10 mx-4 backdrop-blur-xl">
             <div class="text-center mb-8">
-                <div class="w-12 h-12 bg-gradient-to-br from-violet-600 to-fuchsia-600 rounded-xl flex items-center justify-center text-white font-bold shadow-lg shadow-purple-500/20 mx-auto mb-4">
-                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a10 10 0 0 1 10 10c0 5.52-4.48 10-10 10S2 17.52 2 12 6.48 2 12 2z"></path><path d="M8 14s1.5 2 4 2 4-2 4-2"></path><line x1="9" y1="9" x2="9.01" y2="9"></line><line x1="15" y1="9" x2="15.01" y2="9"></line></svg>
-                </div>
+                <img src="https://raw.githubusercontent.com/gerryramdani-star/virmin-chatbot/refs/heads/main/asset/virmin%20icon%201.png" class="w-12 h-12 rounded-xl shadow-lg mb-4 mx-auto object-contain">
                 <h1 class="text-2xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-violet-400 to-fuchsia-400 tracking-tight mb-1">
-                    Gemini Widget
+                    VIRMIN Chatbot
                 </h1>
                 <p class="text-slate-400 text-xs">Silakan login untuk melanjutkan</p>
             </div>
@@ -549,11 +547,11 @@ Gunakan format ini hanya jika relevan.`;
             <div class="space-y-4" :class="{'shake': loginError}">
                 <div>
                     <label class="block text-xs font-medium text-slate-400 mb-1.5 ml-1">Username</label>
-                    <input type="text" x-model="loginData.username" class="w-full px-4 py-3 bg-slate-800/50 border border-slate-700 rounded-xl focus:ring-2 focus:ring-violet-500 focus:border-transparent outline-none text-slate-200 placeholder-slate-600 transition-all hover:bg-slate-800" placeholder="admin">
+                    <input type="text" x-model="loginData.username" class="w-full px-4 py-3 bg-slate-800/50 border border-slate-700 rounded-xl focus:ring-2 focus:ring-violet-500 focus:border-transparent outline-none text-slate-200 placeholder-slate-600 transition-all hover:bg-slate-800" placeholder="input username">
                 </div>
                 <div>
                     <label class="block text-xs font-medium text-slate-400 mb-1.5 ml-1">Password</label>
-                    <input type="password" x-model="loginData.password" @keyup.enter="performLogin" class="w-full px-4 py-3 bg-slate-800/50 border border-slate-700 rounded-xl focus:ring-2 focus:ring-violet-500 focus:border-transparent outline-none text-slate-200 placeholder-slate-600 transition-all hover:bg-slate-800" placeholder="admin">
+                    <input type="password" x-model="loginData.password" @keyup.enter="performLogin" class="w-full px-4 py-3 bg-slate-800/50 border border-slate-700 rounded-xl focus:ring-2 focus:ring-violet-500 focus:border-transparent outline-none text-slate-200 placeholder-slate-600 transition-all hover:bg-slate-800" placeholder="input password">
                 </div>
                 
                 <button @click="performLogin" :disabled="loginLoading" class="w-full bg-gradient-to-r from-violet-600 to-fuchsia-600 hover:from-violet-500 hover:to-fuchsia-500 text-white py-3 rounded-xl font-bold transition-all shadow-lg shadow-purple-500/20 disabled:opacity-50 disabled:cursor-not-allowed mt-2">
@@ -568,7 +566,7 @@ Gunakan format ini hanya jika relevan.`;
             <p x-show="loginError" x-transition class="text-rose-400 text-xs text-center mt-4 font-medium">Username atau password salah.</p>
             
             <div class="mt-8 text-center">
-                <p class="text-[10px] text-slate-500">Demo Credentials: admin / admin</p>
+                <p class="text-[10px] text-slate-500">(2026) Crafted with ❤️ by Om Ger | Ai-Labs</p>
             </div>
         </div>
     </div>
@@ -576,12 +574,10 @@ Gunakan format ini hanya jika relevan.`;
     <!-- Header Glass (Dashboard) -->
     <header x-show="isLoggedIn" x-transition.opacity class="sticky top-0 z-30 h-16 glass-panel border-b-0 flex items-center px-6 justify-between shadow-lg">
         <div class="flex items-center gap-3">
-            <div class="w-9 h-9 bg-gradient-to-br from-violet-600 to-fuchsia-600 rounded-xl flex items-center justify-center text-white font-bold shadow-lg shadow-purple-500/20">
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a10 10 0 0 1 10 10c0 5.52-4.48 10-10 10S2 17.52 2 12 6.48 2 12 2z"></path><path d="M8 14s1.5 2 4 2 4-2 4-2"></path><line x1="9" y1="9" x2="9.01" y2="9"></line><line x1="15" y1="9" x2="15.01" y2="9"></line></svg>
-            </div>
+            <img src="https://raw.githubusercontent.com/gerryramdani-star/virmin-chatbot/refs/heads/main/asset/virmin%20icon%201.png" class="w-12 h-12 rounded-xl shadow-lg mb-4 mx-auto object-contain">
             <div>
                 <h1 class="text-lg font-bold bg-clip-text text-transparent bg-gradient-to-r from-violet-400 to-fuchsia-400 tracking-tight">
-                    Gemini Widget
+                    VIRMIN Chatbot
                 </h1>
                 <div class="flex items-center gap-2 mt-0.5">
                      <span class="px-2 py-0.5 rounded-full bg-white/5 border border-white/10 text-[10px] text-slate-300">v1.5 Stable</span>
@@ -859,5 +855,6 @@ Gunakan format ini hanya jika relevan.`;
     </main>
 </body>
 </html>
+
 
 
